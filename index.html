@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SafeBreath AIoT Pro Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .gauge-container { position: relative; width: 100%; height: 180px; display: flex; justify-content: center; }
+        .gauge-text { position: absolute; bottom: 10px; text-align: center; }
+    </style>
+</head>
+<body class="bg-[#181b1f] text-gray-300 font-sans min-h-screen flex flex-col p-6 overflow-x-hidden">
+
+<header class="flex justify-between items-center border-b border-gray-700 pb-4 mb-6">
+        <div class="flex items-center gap-4">
+            <img src="bsrs_logo.jpg" alt="โลโก้โรงเรียนบ้านสุรศักดิ์" class="w-16 h-16 rounded-full object-cover border-2 border-gray-600 shadow-lg">
+            <div>
+                <h1 class="text-3xl font-extrabold text-blue-400 tracking-wide">SAFEBREATH AIoT</h1>
+                <p class="text-gray-400 text-sm mt-1">Environment Monitoring Center - โรงเรียนบ้านสุรศักดิ์</p>
+            </div>
+        </div>
+        <div class="text-right">
+            <div id="live-clock" class="text-2xl font-mono text-blue-300">00:00:00</div>
+            <div id="weather-forecast" class="text-sm text-yellow-500 mt-1 truncate max-w-xs">☁️ กำลังโหลด...</div>
+        </div>
+    </header>
+    <main class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        
+        <div class="bg-[#22252b] rounded-xl p-6 border border-gray-700 shadow-lg relative">
+            <div class="flex justify-between items-center mb-2">
+                <h2 class="text-xl font-bold text-gray-100">ริมถนนหน้าโรงเรียน</h2>
+                <span id="n1-badge" class="text-xs font-bold px-3 py-1 rounded bg-gray-700 text-gray-400">Node 1</span>
+            </div>
+            
+            <div class="gauge-container mb-4">
+                <canvas id="gaugeNode1"></canvas>
+                <div class="gauge-text">
+                    <div id="n1-pm25" class="text-5xl font-black text-white">--</div>
+                    <div class="text-sm text-gray-400 mt-1">PM2.5 (µg/m³)</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-4 gap-2 text-center border-t border-gray-700 pt-4">
+                <div class="bg-[#1e2126] p-2 rounded"><div class="text-xs text-gray-500">Gas(Car)</div><div id="n1-gas-car" class="font-bold text-gray-200">--</div></div>
+                <div class="bg-[#1e2126] p-2 rounded"><div class="text-xs text-gray-500">Gas(Ind)</div><div id="n1-gas-ind" class="font-bold text-gray-200">--</div></div>
+                <div class="bg-[#1e2126] p-2 rounded"><div class="text-xs text-gray-500">Temp</div><div class="font-bold text-gray-200"><span id="n1-temp">--</span>°C</div></div>
+                <div class="bg-[#1e2126] p-2 rounded"><div class="text-xs text-gray-500">Humid</div><div class="font-bold text-gray-200"><span id="n1-humid">--</span>%</div></div>
+            </div>
+        </div>
+
+        <div class="bg-[#22252b] rounded-xl p-6 border border-gray-700 shadow-lg relative">
+            <div class="flex justify-between items-center mb-2">
+                <h2 class="text-xl font-bold text-gray-100">เสาธงสนามฟุตบอล</h2>
+                <span id="n2-badge" class="text-xs font-bold px-3 py-1 rounded bg-gray-700 text-gray-400">Node 2</span>
+            </div>
+            
+            <div class="gauge-container mb-4">
+                <canvas id="gaugeNode2"></canvas>
+                <div class="gauge-text">
+                    <div id="n2-pm25" class="text-5xl font-black text-white">--</div>
+                    <div class="text-sm text-gray-400 mt-1">PM2.5 (µg/m³)</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-4 gap-2 text-center border-t border-gray-700 pt-4">
+                <div class="bg-[#1e2126] p-2 rounded"><div class="text-xs text-gray-500">Gas(Car)</div><div id="n2-gas-car" class="font-bold text-gray-200">--</div></div>
+                <div class="bg-[#1e2126] p-2 rounded"><div class="text-xs text-gray-500">Gas(Ind)</div><div id="n2-gas-ind" class="font-bold text-gray-200">--</div></div>
+                <div class="bg-[#1e2126] p-2 rounded"><div class="text-xs text-gray-500">Temp</div><div class="font-bold text-gray-200"><span id="n2-temp">--</span>°C</div></div>
+                <div class="bg-[#1e2126] p-2 rounded"><div class="text-xs text-gray-500">Humid</div><div class="font-bold text-gray-200"><span id="n2-humid">--</span>%</div></div>
+            </div>
+        </div>
+    </main>
+
+    <section class="bg-[#22252b] rounded-xl p-6 border border-gray-700 shadow-lg flex-grow mb-6">
+        <h3 class="text-sm font-bold text-gray-300 mb-2">📊 Particulates History (Real-time)</h3>
+        <div class="relative w-full" style="height: 25vh;">
+            <canvas id="pm25Chart"></canvas>
+        </div>
+    </section>
+
+    <script>
+        // 1. ⚠️ ใส่ URL Firebase ของคุณครูตรงนี้ (อย่าลืมแก้ไขนะครับ!)
+        const firebaseConfig = { 
+            databaseURL: "https://safebreath-aiot-default-rtdb.asia-southeast1.firebasedatabase.app" 
+        };
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        // 2. ฟังก์ชันสร้างหน้าปัด (Gauge)
+        function createGauge(ctxId) {
+            return new Chart(document.getElementById(ctxId).getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['PM2.5', 'Free'],
+                    datasets: [{
+                        data: [0, 100],
+                        backgroundColor: ['#10b981', '#374151'], 
+                        borderWidth: 0,
+                        circumference: 180, 
+                        rotation: 270       
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, cutout: '85%', plugins: { tooltip: { enabled: false }, legend: { display: false } } }
+            });
+        }
+
+        const gaugeN1 = createGauge('gaugeNode1');
+        const gaugeN2 = createGauge('gaugeNode2');
+
+        function updateGauge(chart, value) {
+            let maxScale = 100;
+            let val = Math.min(value, maxScale); 
+            let color = '#10b981'; // Green
+            if (value > 30) color = '#f59e0b'; // Yellow
+            if (value > 50) color = '#ef4444'; // Red
+
+            chart.data.datasets[0].data = [val, maxScale - val];
+            chart.data.datasets[0].backgroundColor = [color, '#374151'];
+            chart.update();
+        }
+
+        // 3. ตั้งค่ากราฟเส้น
+        Chart.defaults.color = '#9ca3af';
+        const pm25Chart = new Chart(document.getElementById('pm25Chart').getContext('2d'), {
+            type: 'line',
+            data: { labels: [], datasets: [
+                { label: 'Node 1 (หน้าโรงเรียน)', borderColor: '#3b82f6', borderWidth: 2, tension: 0.3, pointRadius: 0, data: [] },
+                { label: 'Node 2 (เสาธง)', borderColor: '#eab308', borderWidth: 2, tension: 0.3, pointRadius: 0, data: [] }
+            ]},
+            options: { responsive: true, maintainAspectRatio: false, scales: { x: { grid: { display: false } }, y: { grid: { color: '#374151' } } } }
+        });
+
+        let currentPm25_N1 = 0, currentPm25_N2 = 0;
+        setInterval(() => {
+            const timeStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            pm25Chart.data.labels.push(timeStr);
+            pm25Chart.data.datasets[0].data.push(currentPm25_N1);
+            pm25Chart.data.datasets[1].data.push(currentPm25_N2);
+            if (pm25Chart.data.labels.length > 20) {
+                pm25Chart.data.labels.shift(); pm25Chart.data.datasets[0].data.shift(); pm25Chart.data.datasets[1].data.shift();
+            }
+            pm25Chart.update();
+        }, 10000);
+
+        // 4. ดึงข้อมูลจาก Firebase
+        function updateUI(node, data, gaugeChart) {
+            if(!data) return;
+            document.getElementById(`${node}-pm25`).innerText = data.pm25 ?? '--';
+            document.getElementById(`${node}-temp`).innerText = data.temp ? data.temp.toFixed(1) : '--';
+            document.getElementById(`${node}-humid`).innerText = data.humid ? data.humid.toFixed(0) : '--';
+            document.getElementById(`${node}-gas-car`).innerText = data.gas_car ?? '--';
+            document.getElementById(`${node}-gas-ind`).innerText = data.gas_ind ?? '--';
+
+            if (node === 'n1') currentPm25_N1 = data.pm25 ?? 0;
+            if (node === 'n2') currentPm25_N2 = data.pm25 ?? 0;
+            
+            updateGauge(gaugeChart, data.pm25 ?? 0);
+        }
+
+        database.ref('/SafeBreath_AIoT/Node_01').on('value', (snap) => updateUI('n1', snap.val(), gaugeN1));
+        database.ref('/SafeBreath_AIoT/Node_02').on('value', (snap) => updateUI('n2', snap.val(), gaugeN2));
+
+        // 5. นาฬิกา และ พยากรณ์อากาศที่ปลอดภัย
+        setInterval(() => { document.getElementById('live-clock').innerText = new Date().toLocaleTimeString('th-TH'); }, 1000);
+        
+        // ดึงพยากรณ์อากาศแบบปลอดภัย (ป้องกันเว็บล่ม)
+        fetch('https://wttr.in/Chonburi?format=3')
+            .then(res => res.text())
+            .then(data => { 
+                // ถ้าข้อมูลยาวผิดปกติ (ได้หน้าเว็บมาแทน) ให้โชว์คำว่าปกติ
+                if(data.includes('<html') || data.length > 50) {
+                    document.getElementById('weather-forecast').innerText = "🌤️ พยากรณ์ชลบุรี: สภาพอากาศปกติ";
+                } else {
+                    document.getElementById('weather-forecast').innerText = "พยากรณ์: " + data;
+                }
+            })
+            .catch(err => { document.getElementById('weather-forecast').innerText = "🌤️ สภาพอากาศ: ปกติ"; });
+    </script>
+</body>
+</html>
